@@ -4,7 +4,8 @@ import logging
 
 from src.anthropic_client import MODEL, client
 from src.clinic_data import CONTACT_PHONE
-from src.prompts import AGENT_SYSTEM_PROMPT
+from src.prompts import build_agent_system_prompt
+from src.retrieval import retrieve_context
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +22,10 @@ def generate_reply(message: str, intent: str, history: list[dict]) -> str:
     dicts for the current conversation (last ~10 turns, per docs/spec.md).
     Falls back to a fixed derivation message if the API call fails.
     """
+    retrieved_context = retrieve_context(message)
     system_prompt = (
-        f"{AGENT_SYSTEM_PROMPT}\n\nIntencion detectada para el ultimo mensaje "
-        f"del paciente: {intent}."
+        f"{build_agent_system_prompt(retrieved_context)}\n\nIntencion detectada "
+        f"para el ultimo mensaje del paciente: {intent}."
     )
     messages = history + [{"role": "user", "content": message}]
 

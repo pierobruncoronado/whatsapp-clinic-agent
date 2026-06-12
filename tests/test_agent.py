@@ -43,14 +43,16 @@ def test_generate_reply_returns_text():
         usage=_usage(),
     )
 
-    with patch("src.agent.client.messages.create", return_value=mock_response):
+    with patch("src.agent.retrieve_context", return_value="Limpieza dental: S/ 120."), \
+            patch("src.agent.client.messages.create", return_value=mock_response):
         reply = generate_reply("Cuanto cuesta una limpieza?", "info", [])
 
     assert "S/ 120" in reply
 
 
 def test_generate_reply_falls_back_on_api_error():
-    with patch("src.agent.client.messages.create", side_effect=RuntimeError("boom")):
+    with patch("src.agent.retrieve_context", return_value=""), \
+            patch("src.agent.client.messages.create", side_effect=RuntimeError("boom")):
         reply = generate_reply("hola", "otro", [])
 
     assert reply == FALLBACK_REPLY
