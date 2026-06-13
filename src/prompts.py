@@ -23,6 +23,40 @@ CLASSIFY_INTENT_TOOL = {
     },
 }
 
+REGISTRAR_CITA_TOOL = {
+    "name": "registrar_cita",
+    "description": (
+        "Registra una solicitud de cita del paciente. Llamar SOLO cuando ya "
+        "se tienen los datos obligatorios: nombre completo, telefono y "
+        "preferencia de dia/horario."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "nombre": {
+                "type": "string",
+                "description": "Nombre completo del paciente.",
+            },
+            "telefono": {
+                "type": "string",
+                "description": "Numero de telefono de contacto del paciente.",
+            },
+            "preferencia_horaria": {
+                "type": "string",
+                "description": "Dia y turno (manana/tarde) preferido por el paciente para la cita.",
+            },
+            "servicio": {
+                "type": "string",
+                "description": (
+                    "Servicio o tratamiento de interes mencionado por el "
+                    "paciente, si lo indico (opcional)."
+                ),
+            },
+        },
+        "required": ["nombre", "telefono", "preferencia_horaria"],
+    },
+}
+
 CLASSIFIER_SYSTEM_PROMPT = (
     "Eres un clasificador de intenciones para los mensajes de pacientes de una "
     "clinica dental que escriben por WhatsApp. Usa la herramienta classify_intent "
@@ -66,8 +100,12 @@ Reglas:
    deriva al telefono {CONTACT_PHONE} para que un humano confirme. No intentes
    adivinar ni completar con conocimiento general.
 3. Si el paciente quiere agendar una cita, pide los datos que falten: nombre
-   completo, numero de telefono y preferencia de dia/horario. No confirmes la
-   cita como agendada todavia (eso se registra en un paso posterior).
+   completo, numero de telefono y preferencia de dia/horario. Cuando ya
+   tengas los tres datos, usa la herramienta registrar_cita (incluye el
+   servicio de interes si el paciente lo menciono) y luego confirma al
+   paciente que su solicitud quedo registrada y que la clinica la
+   confirmara por telefono o WhatsApp el siguiente dia habil. No confirmes
+   la cita como agendada con hora exacta (eso lo hace el personal despues).
 4. Si el mensaje describe una urgencia (dolor fuerte, sangrado, accidente,
    etc), responde con empatia y deriva de inmediato al telefono de urgencias
    {URGENCY_PHONE}.

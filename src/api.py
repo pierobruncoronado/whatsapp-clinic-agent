@@ -16,6 +16,8 @@ from twilio.twiml.messaging_response import MessagingResponse
 
 from src.agent import FALLBACK_REPLY, generate_reply
 from src.classifier import classify_intent
+from src.clinic_data import CONTACT_PHONE
+from src.sessions import get_history, save_history
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -24,10 +26,19 @@ app = FastAPI()
 
 MAX_HISTORY_TURNS = 10
 
-# In-memory conversation history per phone number (lost on restart).
-# Replacing this with the `sessions` table in Supabase (docs/spec.md
-# section 5) is a future step, not part of today's channel integration.
-_history: dict[str, list[dict]] = {}
+# Anti-abuse limits (docs/spec.md section 3).
+MAX_MESSAGE_LENGTH = 1000
+RATE_LIMIT_MAX_MESSAGES = 20
+RATE_LIMIT_WINDOW_SECONDS = 3600
+
+RATE_LIMIT_REPLY = (
+    "Has enviado muchos mensajes en poco tiempo. Por favor espera unos "
+    f"minutos o llama directamente al {CONTACT_PHONE}."
+)
+
+# In-memory rate-limit counters per phone number (resets on restart, which
+# is acceptable for this basic anti-abuse check).
+_rate_limit: dict[str, list[float]] = {}
 
 
 def _mask_phone(phone: str) -> str:
@@ -35,15 +46,30 @@ def _mask_phone(phone: str) -> str:
     return f"***{phone[-4:]}" if len(phone) >= 4 else "***"
 
 
+def _is_rate_limited(phone: str) -> bool:
+    """Track and check the per-number hourly message rate limit."""
+    now = time.monotonic()
+    recent = [t for t in _rate_limit.get(phone, []) if now - t < RATE_LIMIT_WINDOW_SECONDS]
+    recent.append(now)
+    _rate_limit[phone] = recent
+    return len(recent) > RATE_LIMIT_MAX_MESSAGES
+
+
 @app.post("/whatsapp")
 def whatsapp_webhook(From: str = Form(...), Body: str = Form(...)) -> Response:
     """Handle an inbound Twilio WhatsApp message and reply via TwiML."""
     start = time.monotonic()
     masked_phone = _mask_phone(From)
-    message = Body.strip()
+    message = Body.strip()[:MAX_MESSAGE_LENGTH]
+
+    if _is_rate_limited(From):
+        logger.warning("whatsapp_webhook: phone=%s rate limited", masked_phone)
+        twiml = MessagingResponse()
+        twiml.message(RATE_LIMIT_REPLY)
+        return Response(content=str(twiml), media_type="application/xml")
 
     try:
-        history = _history.get(From, [])
+        history = get_history(From)
         intent = classify_intent(message)
         reply = generate_reply(message, intent, history)
 
@@ -51,7 +77,7 @@ def whatsapp_webhook(From: str = Form(...), Body: str = Form(...)) -> Response:
             {"role": "user", "content": message},
             {"role": "assistant", "content": reply},
         ]
-        _history[From] = history[-(MAX_HISTORY_TURNS * 2):]
+        save_history(From, history[-(MAX_HISTORY_TURNS * 2):])
     except Exception:
         logger.exception("whatsapp_webhook: unexpected error from %s", masked_phone)
         intent = "error"

@@ -40,6 +40,7 @@ def test_classify_intent_falls_back_on_api_error():
 def test_generate_reply_returns_text():
     mock_response = SimpleNamespace(
         content=[SimpleNamespace(type="text", text="Una limpieza dental cuesta S/ 120.")],
+        stop_reason="end_turn",
         usage=_usage(),
     )
 
@@ -56,3 +57,44 @@ def test_generate_reply_falls_back_on_api_error():
         reply = generate_reply("hola", "otro", [])
 
     assert reply == FALLBACK_REPLY
+
+
+def test_generate_reply_calls_registrar_cita_and_inserts_lead():
+    tool_use_response = SimpleNamespace(
+        content=[
+            SimpleNamespace(
+                type="tool_use",
+                id="tool_1",
+                name="registrar_cita",
+                input={
+                    "nombre": "Maria Lopez",
+                    "telefono": "+51999111222",
+                    "preferencia_horaria": "sabado tarde",
+                    "servicio": "limpieza dental",
+                },
+            )
+        ],
+        stop_reason="tool_use",
+        usage=_usage(),
+    )
+    final_response = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="Listo, registramos tu solicitud de cita.")],
+        stop_reason="end_turn",
+        usage=_usage(),
+    )
+
+    with patch("src.agent.retrieve_context", return_value=""), \
+            patch("src.agent.insert_lead", return_value=True) as mock_insert_lead, \
+            patch(
+                "src.agent.client.messages.create",
+                side_effect=[tool_use_response, final_response],
+            ):
+        reply = generate_reply("Quiero una cita el sabado en la tarde", "cita", [])
+
+    mock_insert_lead.assert_called_once_with(
+        nombre="Maria Lopez",
+        telefono="+51999111222",
+        servicio="limpieza dental",
+        preferencia_horaria="sabado tarde",
+    )
+    assert "registramos" in reply
