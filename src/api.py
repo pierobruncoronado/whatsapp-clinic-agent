@@ -8,10 +8,13 @@ Run with: uvicorn src.api:app --port 8000
 """
 
 import logging
+import os
 import time
 
-from fastapi import FastAPI, Form
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
+from twilio.request_validator import RequestValidator
 from twilio.twiml.messaging_response import MessagingResponse
 
 from src.agent import FALLBACK_REPLY, generate_reply
@@ -19,10 +22,18 @@ from src.classifier import classify_intent
 from src.clinic_data import CONTACT_PHONE
 from src.sessions import get_history, save_history
 
+load_dotenv()
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+
+# Validates X-Twilio-Signature on every webhook request (docs/spec.md
+# section 3: requests must come from Twilio). An empty/missing auth token
+# makes every signature check fail closed (403), surfacing misconfiguration
+# instead of silently skipping validation.
+_validator = RequestValidator(os.getenv("TWILIO_AUTH_TOKEN", ""))
 
 MAX_HISTORY_TURNS = 10
 
@@ -55,10 +66,26 @@ def _is_rate_limited(phone: str) -> bool:
     return len(recent) > RATE_LIMIT_MAX_MESSAGES
 
 
+@app.get("/")
+def health() -> dict:
+    """Health check endpoint for Railway."""
+    return {"status": "ok"}
+
+
 @app.post("/whatsapp")
-def whatsapp_webhook(From: str = Form(...), Body: str = Form(...)) -> Response:
+async def whatsapp_webhook(request: Request) -> Response:
     """Handle an inbound Twilio WhatsApp message and reply via TwiML."""
     start = time.monotonic()
+    form = await request.form()
+    signature = request.headers.get("X-Twilio-Signature", "")
+    url = f"https://{request.headers.get('host', '')}{request.url.path}"
+
+    if not _validator.validate(url, dict(form), signature):
+        logger.warning("whatsapp_webhook: invalid Twilio signature")
+        raise HTTPException(status_code=403, detail="Invalid signature")
+
+    From = form.get("From", "")
+    Body = form.get("Body", "")
     masked_phone = _mask_phone(From)
     message = Body.strip()[:MAX_MESSAGE_LENGTH]
 
