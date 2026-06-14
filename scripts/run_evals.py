@@ -375,7 +375,8 @@ def main() -> None:
                 recorded_tool_calls.clear()
 
                 intent = classify_intent(message)
-                reply = agent_module.generate_reply(message, intent, history)
+                retrieved_context = retrieval_module.retrieve_context(message)
+                reply = agent_module.generate_reply(message, intent, history, retrieved_context)
 
                 turn_texts.append(reply)
 

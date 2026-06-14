@@ -44,17 +44,15 @@ def test_generate_reply_returns_text():
         usage=_usage(),
     )
 
-    with patch("src.agent.retrieve_context", return_value="Limpieza dental: S/ 120."), \
-            patch("src.agent.client.messages.create", return_value=mock_response):
-        reply = generate_reply("Cuanto cuesta una limpieza?", "info", [])
+    with patch("src.agent.client.messages.create", return_value=mock_response):
+        reply = generate_reply("Cuanto cuesta una limpieza?", "info", [], "Limpieza dental: S/ 120.")
 
     assert "S/ 120" in reply
 
 
 def test_generate_reply_falls_back_on_api_error():
-    with patch("src.agent.retrieve_context", return_value=""), \
-            patch("src.agent.client.messages.create", side_effect=RuntimeError("boom")):
-        reply = generate_reply("hola", "otro", [])
+    with patch("src.agent.client.messages.create", side_effect=RuntimeError("boom")):
+        reply = generate_reply("hola", "otro", [], "")
 
     assert reply == FALLBACK_REPLY
 
@@ -83,13 +81,12 @@ def test_generate_reply_calls_registrar_cita_and_inserts_lead():
         usage=_usage(),
     )
 
-    with patch("src.agent.retrieve_context", return_value=""), \
-            patch("src.agent.insert_lead", return_value=True) as mock_insert_lead, \
+    with patch("src.agent.insert_lead", return_value=True) as mock_insert_lead, \
             patch(
                 "src.agent.client.messages.create",
                 side_effect=[tool_use_response, final_response],
             ):
-        reply = generate_reply("Quiero una cita el sabado en la tarde", "cita", [])
+        reply = generate_reply("Quiero una cita el sabado en la tarde", "cita", [], "")
 
     mock_insert_lead.assert_called_once_with(
         nombre="Maria Lopez",

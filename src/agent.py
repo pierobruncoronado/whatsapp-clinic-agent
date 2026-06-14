@@ -6,7 +6,6 @@ from src.anthropic_client import MODEL, client
 from src.clinic_data import CONTACT_PHONE
 from src.leads import insert_lead
 from src.prompts import REGISTRAR_CITA_TOOL, build_agent_system_prompt
-from src.retrieval import retrieve_context
 
 logger = logging.getLogger(__name__)
 
@@ -33,17 +32,18 @@ def _run_registrar_cita(tool_input: dict) -> str:
     return "No se pudo registrar el lead. Informa al paciente que llame directamente a la clinica."
 
 
-def generate_reply(message: str, intent: str, history: list[dict]) -> str:
+def generate_reply(message: str, intent: str, history: list[dict], retrieved_context: str) -> str:
     """Generate the agent's reply to a patient message.
 
     `history` is a list of {"role": "user"|"assistant", "content": str}
     dicts for the current conversation (last ~10 turns, per docs/spec.md).
+    `retrieved_context` is the RAG context for `message` (src/retrieval.py),
+    fetched by the caller so its latency can be measured separately.
     If the patient has provided all required appointment data, the model
     may call the registrar_cita tool, which inserts a row into the `leads`
     table (src/leads.py) before the final reply is generated.
     Falls back to a fixed derivation message if any API call fails.
     """
-    retrieved_context = retrieve_context(message)
     system_prompt = (
         f"{build_agent_system_prompt(retrieved_context)}\n\nIntencion detectada "
         f"para el ultimo mensaje del paciente: {intent}."

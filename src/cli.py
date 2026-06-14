@@ -8,6 +8,7 @@ import logging
 
 from src.agent import generate_reply
 from src.classifier import classify_intent
+from src.retrieval import retrieve_context
 
 MAX_HISTORY_TURNS = 10
 EXIT_WORDS = {"salir", "exit", "quit"}
@@ -32,7 +33,8 @@ def main() -> None:
             break
 
         intent = classify_intent(user_message)
-        reply = generate_reply(user_message, intent, history)
+        retrieved_context = retrieve_context(user_message)
+        reply = generate_reply(user_message, intent, history, retrieved_context)
 
         print(f"[intencion: {intent}]")
         print(f"Agente: {reply}\n")
